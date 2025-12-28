@@ -6,6 +6,8 @@ import io
 import numpy as np
 from dotenv import load_dotenv
 import os
+from pydub import AudioSegment
+import speech_recognition as sr
 
 load_dotenv()
 
@@ -25,12 +27,12 @@ class BotImagem(BotTelegram):
         super().__init__(token, update, context)
         self.model = model
 
-    async def processamento(self):
+    async def processamento_imagem(self):
         try:
-            await self.responder("Processando imagem...")
-
             # baixa a imagem com maior resolução enviada pelo telegram
             photo_file = await self.message.photo[-1].get_file()
+            
+            await self.responder("Processando imagem...")
 
             # criar um arquivo na RAM. Ao fim do with, o arquivo será fechado
             with io.BytesIO() as out:
@@ -84,7 +86,7 @@ class BotImagem(BotTelegram):
                 if sucesso:
                     await self.message.reply_photo(photo=buffer.tobytes())
                 else:
-                    await self.responder("Não foi possível carregar a imagem classificada.")
+                    await self.responder("Não foi possível enviar a imagem classificada.")
 
         except Exception as e:
             print(f"Erro no processamento de imagem: {e}")
@@ -95,9 +97,41 @@ class BotAudio(BotTelegram):
     def __init__(self, token, update, context):
         super().__init__(token, update, context)
 
-    async def processamento(self):
+    async def processamento_audio(self):
         await self.responder("Áudio recebido! (Transcrição em desenvolvimento)")
-        # Lógica futura: Pydub + SpeechRecognition
+
+        #Baixa os arquivos do Telegram para o Buffer (para memória RAM)
+        audio_buffer = io.BytesIO()
+        audio_file = await self.update.message.voice.get_file()
+        await audio_file.download_to_memory(audio_buffer)
+        audio_buffer.seek(0)  # Volta o ponteiro para o início do buffer
+
+        try:
+            # 2. Converte .ogg para .wav usando Pydub
+            audio_segment = AudioSegment.from_file(audio_buffer, format="ogg")
+
+            #Faz as operações em memória RAM
+            wav_buffer = io.BytesIO()
+            audio_segment.export(wav_buffer, format="wav")
+            wav_buffer.seek(0)
+
+            # 3. Reconhecimento de Fala
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(wav_buffer) as source:
+                audio_data = recognizer.record(source)
+                # Usando Google (Online)
+                texto = recognizer.recognize_google(audio_data, language='pt-BR')
+
+            await self.update.message.reply_text(f"Transcrição: {texto}")
+
+        except sr.UnknownValueError:
+            await self.update.message.reply_text("Não consegui entender o áudio.")
+        except Exception as e:
+            await self.update.message.reply_text(f"Erro no processamento: {e}")
+        finally:
+            #Fecha os buffers
+            audio_buffer.close()
+            wav_buffer.close()
 
 
 if __name__ == "__main__":
@@ -123,12 +157,12 @@ if __name__ == "__main__":
     # Roteamento (Factory Pattern)
     async def router_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot = BotImagem(token, update, context, model)
-        await bot.processamento()
+        await bot.processamento_imagem()
 
 
     async def router_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot = BotAudio(token, update, context)
-        await bot.processamento()
+        await bot.processamento_audio()
 
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
