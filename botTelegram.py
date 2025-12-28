@@ -1,85 +1,50 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import zipfile
-import requests
 import cv2
-import matplotlib.pyplot as plt
-import glob
-import random
 import os
-import time
+from dotenv import load_dotenv
 from ultralytics import YOLO
 from telegram import Update
 
+load_dotenv()
+
 class BotTelegram:
-    def __init__(self, token):
+    def __init__(self, token, update: Update, context: ContextTypes.DEFAULT_TYPE):
         self.__token = token
-        self.app = Application.builder().token(token).build()
-            #commands
-        self.app.add_handler(CommandHandler('start', self.start_command))
-        self.app.add_handler(CommandHandler('help', self.help_command))
+        self.update = update
+        self.context = context
+        self.message = update.message
 
-            #messages
-        self.app.add_handler(MessageHandler(filters.TEXT, self.handle_message))
-        
-            #deal with errors
-        self.app.add_error_handler(self.error)
-
-            #imagem e audio
-        self.app.add_handler(MessageHandler(filters.PHOTO, self.router_imagem))
-        self.app.add_handler(MessageHandler(filters.VOICE, self.router_audio))
-
-    #comandos
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("bot iniciado")
-
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("envie uma imagem para que o bot descreva os objetos contidos nela ou um áudio para que o bot o transcreva em forma de texto")
-    
-    #se o usuário enviar uma mensagem
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("mensagens de texto não são compreendidas pelo bot. por favor envie apenas audios ou imagens")
-    
-    #em caso de erro
-    async def error(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        print(f'Update {update} caused error {context.error}')
-
-    #identificar se a mensagem é um áudio ou imagem
-    async def router_imagem(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        bot_imagem = BotImagem(update.message, self.model)
-
-    async def router_audio(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("Áudio recebido! Processando...")
-
-    #iniciar leitura de mensgaens
-    def iniciar_bot(self):
-        self.app.run_polling(poll_interval=3)
-
-if __name__ == "__main__":
-    token = '8578762728:AAGHWPWoP9qlkCgY8BikH8kpvivhR9_CJlI'
-    bot = BotTelegram(token)
-    bot.iniciar_bot()
+    async def responder(self, texto):
+        await self.message.reply_text(texto)
 
 class BotImagem(BotTelegram):
-    def __init__(self, token, mensagem):
-        super().__init__(token, mensagem)
-
-
-    model = YOLO("yolov8n.pt")
+    def __init__(self, token, update, context, model):
+        super().__init__(token, update, context)
+        self.model = model
 
     # Função para executar a parte do yolo, sendo "image_path" a imagem que quer-se ler
-    def aval_img_yolo(self, image_path, model):
+    async def processamento(self):
+
+        #baixa a imagem com maior resuluão enviada pelo telegram
+        photo_file = await self.message.photo[-1].get_file()
+        #criar um arquivo temporário para extrair o caminho da imagem com o id da mensagem
+        image_path = f"temp_{self.message.id}.jpg"
+        #baixa a imagem no computador
+        await photo_file.download_to_drive(image_path)
 
         # Está lendo a iamgem que é enviada ao yolo
         image = cv2.imread(image_path)
 
         if image is None:
-                return "Erro ao carregar a imagem."
+            await self.responder("Erro ao carregar a imagem.")
+            return 
 
         # Está executando o yolo
-        result = model(image)
+        result = self.model(image)
 
         if len(result[0].boxes) == 0:
-                return "Nenhum objeto detectado." # Fundamental compreender que  o yolo pré treinado possui limitações
+            await self.responder("Nenhum objeto detectado.")
+            return  # Fundamental compreender que  o yolo pré treinado possui limitações
 
         # Nomes das classes já presentes no yolo
         name_class = result[0].names
@@ -115,26 +80,66 @@ class BotImagem(BotTelegram):
                 2
             )
 
-            # Imprime no prompt
-            print(
-                f"Classe: {name_class[class_id]} | "
-                f"Confiança: {confidence:.2f}% | "
-                f"Box: ({x1}, {y1}, {x2}, {y2})"
-            )
+        output_imagepath = f"resultado_{self.message.id}.jpg"
+        cv2.imwrite(output_imagepath, image)
 
-        # Mostra a imagem com bounding boxes
-            cv2.imshow("Resultado", image)
-        
-        cv2.waitKey(0) #apertar qualquer tecla para sair
-        
-        cv2.destroyAllWindows()
+        await self.responder(final)
+        await self.message.reply_photo(photo = open(output_imagepath, 'rb'))
 
-        return final
+        #limpar o arquivo
+        os.remove(image_path)
+        os.remove(output_imagepath)
 
 class BotAudio(BotTelegram):
-    def __init__(self, token, mensagem):
-        super().__init__(token, mensagem)
+    def __init__(self, token, update, context):
+        super().__init__(token, update, context)
 
+    async def processamento(self):
+        await self.responder("Áudio recebido! (Transcrição em desenvolvimento)")
     #interpretar a mensagem como um audio
 
+if __name__ == "__main__":
+    token = os.getenv('token')
+    model = YOLO("yolov8n.pt")
 
+    #comandos /start e /help
+    async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("bot iniciado")
+
+    async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("envie uma imagem para que o bot descreva os objetos contidos nela ou um áudio para que o bot o transcreva em forma de texto")
+    
+    #identificar se a mensagem é um áudio ou imagem e instancia a mensagem para cada respectiva classe através de polimorfismo
+    async def router_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        bot = BotImagem(token, update, context, model)
+        await bot.processamento()
+
+    async def router_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        bot = BotAudio(token, update, context)
+        await bot.processamento()
+
+    #se o usuário enviar uma mensagem
+    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("mensagens de texto não são compreendidas pelo bot. por favor envie apenas audios ou imagens")
+    
+    #em caso de erro
+    #async def error(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        #print(f'Update {update} caused error {context.error}')
+
+    app = Application.builder().token(token).build()
+    
+    #comandos
+    app.add_handler(CommandHandler('start', start_command))
+    app.add_handler(CommandHandler('help', help_command))
+    #mensagens
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+        
+    #quando houver algum erro
+    #app.add_error_handler(error)
+
+    #imagem e audio
+    app.add_handler(MessageHandler(filters.PHOTO, router_imagem))
+    app.add_handler(MessageHandler(filters.VOICE, router_audio))
+
+    #iniciar o bot
+    app.run_polling()
