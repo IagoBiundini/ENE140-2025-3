@@ -4,12 +4,11 @@ import cv2
 from ultralytics import YOLO
 import io
 import numpy as np
-from dotenv import load_dotenv
-import os
+from dotenv import dotenv_values
 from pydub import AudioSegment
 import speech_recognition as sr
 
-load_dotenv()
+config = dotenv_values(".env")
 
 class BotTelegram:
     def __init__(self, token, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -18,8 +17,12 @@ class BotTelegram:
         self.context = context
         self.message = update.message
 
+    #Serve para facilitar o envio de mensagens
     async def responder(self, texto):
-        await self.message.reply_text(texto)
+        self.msg = await self.message.reply_text(texto)
+    #Serve para editar a mensagem anteriormente enviada e dar dinâmismo à conversa
+    async def editar(self, texto):
+        await self.msg.edit_text(texto)
 
 
 class BotImagem(BotTelegram):
@@ -42,14 +45,14 @@ class BotImagem(BotTelegram):
                 image_file = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
                 if image_file is None:
-                    await self.responder("Erro ao carregar a imagem.")
+                    await self.editar("Erro ao carregar a imagem.")
                     return
 
                 # executa o YOLO
                 result = self.model(image_file)
 
                 if len(result[0].boxes) == 0:
-                    await self.responder("Nenhum objeto detectado.")
+                    await self.editar("Nenhum objeto detectado.")
                     return
 
                 # nomes das classes
@@ -79,14 +82,17 @@ class BotImagem(BotTelegram):
                     )
 
                     final += f"- {name_class[class_id]}: {confidence:.1f}%\n"
-
+                
+                await self.editar(final)
+                await self.responder("...")
+                
                 sucesso, buffer = cv2.imencode('.jpg', image_file)
 
-                await self.responder(final)
                 if sucesso:
+                    await self.editar("Aqui está a imagem com as classificações:")
                     await self.message.reply_photo(photo=buffer.tobytes())
                 else:
-                    await self.responder("Não foi possível enviar a imagem classificada.")
+                    await self.editar("Não foi possível enviar a imagem classificada.")
 
         except Exception as e:
             print(f"Erro no processamento de imagem: {e}")
@@ -98,13 +104,12 @@ class BotAudio(BotTelegram):
         super().__init__(token, update, context)
 
     async def processamento_audio(self):
-        await self.responder("Áudio recebido! (Transcrição em desenvolvimento)")
-
         #Baixa os arquivos do Telegram para o Buffer (para memória RAM)
         audio_buffer = io.BytesIO()
         audio_file = await self.update.message.voice.get_file()
         await audio_file.download_to_memory(audio_buffer)
         audio_buffer.seek(0)  # Volta o ponteiro para o início do buffer
+        await self.responder("Processando audio...")
 
         try:
             # 2. Converte .ogg para .wav usando Pydub
@@ -122,12 +127,13 @@ class BotAudio(BotTelegram):
                 # Usando Google (Online)
                 texto = recognizer.recognize_google(audio_data, language='pt-BR')
 
-            await self.update.message.reply_text(f"Transcrição: {texto}")
+            await self.editar(f"Transcrição:\n\n{texto}")
 
         except sr.UnknownValueError:
-            await self.update.message.reply_text("Não consegui entender o áudio.")
+            await self.editar("Não consegui entender o áudio.")
         except Exception as e:
-            await self.update.message.reply_text(f"Erro no processamento: {e}")
+            await self.editar(f"Ocorreu um erro ao tentar processar o áudio.")
+            print(f"Erro no processamento: {e}")
         finally:
             #Fecha os buffers
             audio_buffer.close()
@@ -135,7 +141,7 @@ class BotAudio(BotTelegram):
 
 
 if __name__ == "__main__":
-    token = os.getenv('token')
+    token = config.get('token')
 
     # ver se o token ta funcionando
     if not token:
@@ -181,5 +187,5 @@ if __name__ == "__main__":
     # Ajuste: Filtra texto APENAS se não for comando (ver isso aqui)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("bot iniciado")
+    print("Bot iniciado.")
     app.run_polling()
