@@ -1,0 +1,209 @@
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import cv2
+from ultralytics import YOLO
+import io
+import numpy as np
+from dotenv import dotenv_values
+from pydub import AudioSegment
+import speech_recognition as sr
+import tensorflow as tf
+import tensorflow_hub as hub
+import csv
+
+config = dotenv_values(".env")
+
+# CLASSE PARA CLASSIFICAÇÃO DE SOM (YAMNet)
+class ClassificadorSom:
+    def __init__(self):
+        print("Carregando YAMNet...")
+        self.model = hub.load('https://tfhub.dev/google/yamnet/1')
+        class_map_path = self.model.class_map_path().numpy().decode('utf-8')
+        self.class_names = self._ler_labels(class_map_path)
+
+    def _ler_labels(self, path):
+        classes = []
+        with tf.io.gfile.GFile(path) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                classes.append(row['display_name'])
+        return classes
+
+    def identificar(self, wav_data):
+        # O YAMNet exige áudio em float32 e 16kHz
+        scores, _, _ = self.model(wav_data)
+        media_scores = tf.reduce_mean(scores, axis=0)
+        idx_max = tf.argmax(media_scores)
+        return self.class_names[idx_max], media_scores[idx_max].numpy()
+
+class BotTelegram:
+    def __init__(self, token, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        self.__token = token
+        self.update = update
+        self.context = context
+        self.message = update.message
+    
+    #Serve para facilitar o envio de mensagens
+    async def responder(self, texto):
+        self.msg = await self.message.reply_text(texto)
+        #Serve para editar a mensagem anteriormente enviada e dar dinâmismo à conversa
+    async def editar(self, texto):
+        await self.msg.edit_text(texto)
+
+
+class BotImagem(BotTelegram):
+    def __init__(self, token, update, context, model):
+        super().__init__(token, update, context)
+        self.model = model
+
+    async def processamento_imagem(self):
+        try:
+            # baixa a imagem com maior resolução enviada pelo telegram
+            photo_file = await self.message.photo[-1].get_file()
+            await self.responder("Processando imagem...")
+
+            with io.BytesIO() as out:
+                await photo_file.download_to_memory(out)
+                out.seek(0)
+                file_bytes = np.frombuffer(out.getvalue(), dtype=np.uint8)
+                image_file = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+                if image_file is None:
+                    await self.editar("Erro ao carregar a imagem.")
+                    return
+
+                # executa o YOLO
+                result = self.model(image_file)
+
+                if len(result[0].boxes) == 0:
+                    await self.editar("Nenhum objeto detectado.")
+                    return
+
+                # nomes das classes
+                name_class = result[0].names
+                final = "Avaliação da imagem:\n"
+
+                # loop das detecções
+                for box in result[0].boxes:
+                    class_id = int(box.cls)
+                    confidence = float(box.conf) * 100
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    cv2.rectangle(image_file, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    cv2.putText(
+                        image_file,
+                        f"{name_class[class_id]} {confidence:.1f}%",
+                        (x1, max(y1 - 10, 20)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 0, 255),
+                        2
+                    )
+                    final += f"- {name_class[class_id]}: {confidence:.1f}%\n"
+                
+                await self.editar(final)
+                sucesso, buffer = cv2.imencode('.jpg', image_file)
+
+                if sucesso:
+                    await self.message.reply_photo(photo=buffer.tobytes(), caption="Aqui está a imagem classificada:")
+                else:
+                    await self.editar("Não foi possível enviar a imagem classificada.")
+
+        except Exception as e:
+            print(f"Erro no processamento de imagem: {e}")
+            await self.responder("Ocorreu um erro ao processar a imagem.")
+
+
+class BotAudio(BotTelegram):
+    # ADAPTAÇÃO: Agora o BotAudio recebe o motor_som para classificação
+    def __init__(self, token, update, context, motor_som):
+        super().__init__(token, update, context)
+        self.motor_som = motor_som
+
+    async def processamento_audio(self):
+        audio_buffer = io.BytesIO()
+        audio_file = await self.update.message.voice.get_file()
+        await audio_file.download_to_memory(audio_buffer)
+        audio_buffer.seek(0) 
+        
+        # MUDANÇA: Feedback inicial mais detalhado
+        await self.responder("🎧 Analisando som e transcrevendo...")
+
+        try:
+            # 1- Ajuste para YAMNet: Conversão para 16kHz, Mono e Float32
+            audio_segment = AudioSegment.from_file(audio_buffer, format="ogg")
+            audio_segment = audio_segment.set_frame_rate(16000).set_channels(1)
+            
+            # Converte para array numpy normalizado (entre -1 e 1)
+            samples = np.array(audio_segment.get_array_of_samples()).astype(np.float32) / 32768.0
+
+            # 2- INCLUSÃO: Classificação de Som via YAMNet
+            classe, confianca = self.motor_som.identificar(samples)
+            resposta_final = f"✅ Som identificado: {classe} ({confianca:.1%})\n"
+
+            # 3 - Transcrição (Lógica original mantida em memória RAM)
+            wav_buffer = io.BytesIO()
+            audio_segment.export(wav_buffer, format="wav")
+            wav_buffer.seek(0)
+
+            # Reconhecimento de fala
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(wav_buffer) as source:
+                audio_data = recognizer.record(source)
+                texto = recognizer.recognize_google(audio_data, language='pt-BR')
+                resposta_final += f"📝 Transcrição: {texto}"
+
+            await self.editar(resposta_final)
+
+        except sr.UnknownValueError:
+            await self.editar(f"{resposta_final}\n Não consegui entender o áudio.")
+        except Exception as e:
+            await self.editar(f"Ocorreu um erro ao processar o áudio.")
+            print(f"Erro no processamento: {e}")
+        finally:
+            audio_buffer.close()
+            if 'wav_buffer' in locals(): wav_buffer.close()
+
+
+if __name__ == "__main__":
+    token = config.get('token')
+
+    if not token:
+        print("Erro: Token não encontrado. Verifique seu arquivo .env")
+        exit()
+
+    # INICIALIZAÇÃO DOS MODELOS
+    model_yolo = YOLO("yolov8n.pt")
+    # NOVO: Instanciando o classificador de som globalmente
+    motor_som = ClassificadorSom() 
+
+    # COMANDOS
+    async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(" Bot iniciado! Envie uma foto ou áudio.")
+
+    async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("Envie uma imagem para análise (YOLO) ou áudio para classificação (YAMNet) e transcrição.")
+
+    # ROUTERS ADAPTADOS 
+    async def router_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        bot = BotImagem(token, update, context, model_yolo)
+        await bot.processamento_imagem()
+
+    async def router_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # ADAPTAÇÃO: Passando o motor de som para o bot
+        bot = BotAudio(token, update, context, motor_som)
+        await bot.processamento_audio()
+
+    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("Por favor envie apenas áudios ou imagens.")
+
+    # CONFIGURAÇÃO DO APP 
+    app = Application.builder().token(token).build()
+
+    app.add_handler(CommandHandler('start', start_command))
+    app.add_handler(CommandHandler('help', help_command))
+    app.add_handler(MessageHandler(filters.PHOTO, router_imagem))
+    app.add_handler(MessageHandler(filters.VOICE, router_audio))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("Bot iniciado.")
+    app.run_polling()
