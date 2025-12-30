@@ -5,7 +5,7 @@ from ultralytics import YOLO
 import io
 import numpy as np
 from dotenv import dotenv_values
-from pydub import AudioSegment
+import soundfile as sf
 import speech_recognition as sr
 
 config = dotenv_values(".env")
@@ -108,18 +108,23 @@ class BotAudio(BotTelegram):
     async def processamento(self):
         #Baixa os arquivos do Telegram para o Buffer (para memória RAM)
         audio_buffer = io.BytesIO()
+
         audio_file = await self.update.message.voice.get_file()
         await audio_file.download_to_memory(audio_buffer)
         audio_buffer.seek(0)  # Volta o ponteiro para o início do buffer
+
         await self.responder("Processando audio...")
+        #faz as operações em memória RAM
+        wav_buffer = io.BytesIO()
 
         try:
-            # 2. Converte .ogg para .wav usando Pydub
-            audio_segment = AudioSegment.from_file(audio_buffer, format="ogg")
+            # converte usando soundfile 
+            data, samplerate = sf.read(audio_buffer)
 
-            #Faz as operações em memória RAM
-            wav_buffer = io.BytesIO()
-            audio_segment.export(wav_buffer, format="wav")
+            #escreve no buffer WAV, 'PCM_16' é o formato ideal para escrever em buffer
+            sf.write(wav_buffer, data, samplerate, format='WAV', subtype='PCM_16')
+
+            #prepara o WAV para leitura
             wav_buffer.seek(0)
 
             # 3. Reconhecimento de Fala
