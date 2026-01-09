@@ -1,0 +1,6 @@
+python-telegram-bot==20.6
+ultralytics
+opencv-python
+numpy
+speechrecognition
+pydub
