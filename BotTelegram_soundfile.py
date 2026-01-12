@@ -7,7 +7,12 @@ import numpy as np
 from dotenv import dotenv_values
 import soundfile as sf
 import speech_recognition as sr
+import tensorflow as tf
+import tensorflow_hub as hub
+import csv
+from scipy import signal
 
+#proteção do token utilizando um arquivo .env que será ocultado no github
 config = dotenv_values(".env")
 
 class BotTelegram:
@@ -100,10 +105,55 @@ class BotImagem(BotTelegram):
             print(f"Erro no processamento de imagem: {e}")
             await self.responder("Ocorreu um erro ao processar a imagem.")
 
+class ClassificadorSom: #para que o yamnet seja carregado apenas uma vez
+    def __init__(self):
+        print("Carregando YAMNet...")
+        #carrega o modelo
+        self.model = hub.load('https://tfhub.dev/google/yamnet/1')
+
+        #carrega os nomes das classes
+        class_map_path = self.model.class_map_path().numpy().decode('utf-8')
+        self.class_names = self._ler_labels(class_map_path)
+
+    def _ler_labels(self, path):
+        classes = []
+        with tf.io.gfile.GFile(path) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                classes.append(row['display_name'])
+        return classes
+
+    def preparar_audio(self, data, sample_rate_original):
+        #coonverter para mono se for estéreo (yamnet treinado apenas para mono)
+        if len(data.shape) > 1:
+            data = np.mean(data, axis=1)
+            
+        #passar o áudio para 16kHz já que o yamnet só aceita esse formato
+        target_sr = 16000
+        if sample_rate_original != target_sr:
+            number_of_samples = round(len(data) * float(target_sr) / sample_rate_original)
+            data = signal.resample(data, number_of_samples)
+            
+        #normalizar e converter para float32
+        return data.astype(np.float32)
+
+    def identificar(self, wav_data):
+        #roda o modelo
+        scores, embeddings, spectrogram = self.model(wav_data)
+        
+        #pega a média dos scores de todos os segmentos do áudio
+        media_scores = tf.reduce_mean(scores, axis=0)
+        
+        #pega o índice da maior probabilidade
+        idx_max = tf.argmax(media_scores)
+        confidence = media_scores[idx_max].numpy() * 100
+        
+        return self.class_names[idx_max], confidence
 
 class BotAudio(BotTelegram):
-    def __init__(self, token, update, context):
+    def __init__(self, token, update, context, classificador_som):
         super().__init__(token, update, context)
+        self.classificador_som = classificador_som
 
     async def processamento(self):
         #Baixa os arquivos do Telegram para o Buffer (para memória RAM)
@@ -121,18 +171,24 @@ class BotAudio(BotTelegram):
             # converte usando soundfile 
             data, samplerate = sf.read(audio_buffer)
 
+            #classificação do yamnet
+            classe, confianca = self.classificador_som.identificar(data.astype(np.float32))
+            res_final = f"Som identificado: {classe} ({confianca:.1%})\n"
+
             #escreve no buffer WAV, 'PCM_16' é o formato ideal para escrever em buffer
             sf.write(wav_buffer, data, samplerate, format='WAV', subtype='PCM_16')
 
             #prepara o WAV para leitura
             wav_buffer.seek(0)
 
-            # 3. Reconhecimento de Fala
-            recognizer = sr.Recognizer()
-            with sr.AudioFile(wav_buffer) as source:
-                audio_data = recognizer.record(source)
-                # Usando Google (Online)
-                texto = recognizer.recognize_google(audio_data, language='pt-BR')
+            #reconhecimento de Fala
+            if "Speech" in classe or "Conversation" in classe or confianca > 0.4:
+                await self.editar(res_final + "Transcrevendo fala...")
+                recognizer = sr.Recognizer()
+                with sr.AudioFile(wav_buffer) as source:
+                    audio_data = recognizer.record(source)
+                    texto = recognizer.recognize_google(audio_data, language='pt-BR')
+                    res_final += f"Transcrição: {texto}"
 
             await self.editar(f"Transcrição:\n\n{texto}")
 
@@ -142,7 +198,7 @@ class BotAudio(BotTelegram):
             await self.editar(f"Ocorreu um erro ao tentar processar o áudio.")
             print(f"Erro no processamento: {e}")
         finally:
-            #Fecha os buffers
+            #fecha os buffers
             audio_buffer.close()
             wav_buffer.close()
 
@@ -159,7 +215,7 @@ async def router_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await bot.processamento()
 
 async def router_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    bot = BotAudio(token, update, context)
+    bot = BotAudio(token, update, context, classificador_som)
     await bot.processamento()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,6 +232,7 @@ if __name__ == "__main__":
 
     model = YOLO("yolov8n.pt")
 
+    classificador_som = ClassificadorSom()
     # configuração do app
     app = Application.builder().token(token).build()
 
@@ -184,8 +241,6 @@ if __name__ == "__main__":
 
     app.add_handler(MessageHandler(filters.PHOTO, router_imagem))
     app.add_handler(MessageHandler(filters.VOICE, router_audio))
-
-    # Ajuste: Filtra texto APENAS se não for comando (ver isso aqui)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot iniciado.")
