@@ -17,7 +17,7 @@ class BotTelegram:
         self.app.add_handler(CommandHandler("help", self.help))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(f"Olá! Sou o {self.nomedobot}. Envie uma foto de rosto para começar.")
+        await update.message.reply_text(f"Olá! Sou o {self.nomedobot}. Envie uma foto para começar.")
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Envie uma imagem e escolha: YOLO (objetos), Inverter (edição) ou Idade (facial).")
