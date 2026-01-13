@@ -8,18 +8,18 @@ from bot_base import BotTelegram
 from io import BytesIO
 from dataclasses import dataclass
 
-# -------------------- CONFIGURAÇÃO DE LOG --------------------
+#CONFIGURAÇÃO DE LOG 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -------------------- DTO DE DETECÇÃO --------------------
+#DTO DE DETECÇÃO
 @dataclass
 class Deteccao:
     label: str
     confianca: float
     bbox: tuple  # (x1, y1, x2, y2)
 
-# -------------------- BOT DE IMAGEM --------------------
+# BOT DE IMAGEM 
 class BotImagem(BotTelegram):
 
     def __init__(self, token):
@@ -40,13 +40,13 @@ class BotImagem(BotTelegram):
             MessageHandler(filters.PHOTO, self.processar_imagem)
         )
 
-    # -------------------- PIPELINE PRINCIPAL --------------------
+    #PIPELINE PRINCIPAL
     async def processar_imagem(self, update, context):
         try:
             img = await self._baixar_imagem(update)
 
             if img is None:
-                await update.message.reply_text("❌ Imagem inválida.")
+                await update.message.reply_text("Imagem inválida.")
                 return
 
             img = self._redimensionar_imagem(img)
@@ -63,10 +63,10 @@ class BotImagem(BotTelegram):
         except Exception as e:
             logger.error("Erro ao processar imagem", exc_info=True)
             await update.message.reply_text(
-                "❌ Ocorreu um erro ao processar a imagem."
+                "Ocorreu um erro ao processar a imagem."
             )
 
-    # -------------------- FUNÇÕES AUXILIARES --------------------
+    #FUNÇÕES AUXILIARES 
     async def _baixar_imagem(self, update):
         photo = update.message.photo[-1]
         file = await photo.get_file()
@@ -142,9 +142,9 @@ class BotImagem(BotTelegram):
 
     def _montar_resposta(self, deteccoes):
         if not deteccoes:
-            return "🖼️ Nenhum objeto detectado."
+            return "Nenhum objeto detectado."
 
-        linhas = ["🖼️ Objetos detectados:"]
+        linhas = ["Objetos detectados:"]
         for det in deteccoes:
             linhas.append(
                 f"- {det.label} ({det.confianca*100:.1f}%)"
@@ -161,3 +161,4 @@ class BotImagem(BotTelegram):
             chat_id=update.effective_chat.id,
             photo=img_io
         )
+
