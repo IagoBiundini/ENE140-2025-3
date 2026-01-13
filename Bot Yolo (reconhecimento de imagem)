@@ -1,0 +1,116 @@
+import os
+import cv2
+from collections import Counter
+from ultralytics import YOLO
+
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
+from telegram.ext import (
+    ContextTypes,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters
+)
+
+
+class BotImagem(BotTelegram):
+    """
+    Bot especializado em detecção de objetos com YOLO
+    """
+
+    def _init_(self, token: str, modelo: str):
+        super()._init_(token)
+        self._modelo = YOLO(modelo)
+        self._cache = {}
+
+        # Handlers específicos do bot de imagem
+        self.app.add_handler(MessageHandler(filters.PHOTO, self.processar_mensagem))
+        self.app.add_handler(CallbackQueryHandler(self.tratar_botoes))
+
+    async def processar_mensagem(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Processa imagens enviadas"""
+        foto = update.message.photo[-1]
+        arquivo = await foto.get_file()
+
+        msg_id = update.message.message_id
+        caminho_img = f"img_{msg_id}.jpg"
+        await arquivo.download_to_drive(caminho_img)
+
+        resultados = self._modelo(caminho_img, conf=0.4)
+
+        objetos = []
+        for r in resultados:
+            for cls in r.boxes.cls:
+                objetos.append(self._modelo.names[int(cls)])
+
+        # Cache dos dados
+        self._cache[msg_id] = {
+            "objetos": objetos,
+            "resultados": resultados,
+            "arquivo": caminho_img
+        }
+
+        teclado = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Objetos", callback_data=f"lista_{msg_id}"),
+                InlineKeyboardButton(" Quantidade", callback_data=f"contagem_{msg_id}")
+            ],
+            [
+                InlineKeyboardButton("Imagem anotada", callback_data=f"imagem_{msg_id}")
+            ]
+        ])
+
+        await update.message.reply_text(
+            "Detecção concluída! Escolha uma opção:",
+            reply_markup=teclado
+        )
+
+    async def tratar_botoes(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Processa cliques nos botões inline"""
+        query = update.callback_query
+        await query.answer()
+
+        acao, msg_id = query.data.split("_")
+        msg_id = int(msg_id)
+
+        dados = self._cache.get(msg_id)
+        if not dados:
+            await query.edit_message_text(" Dados não encontrados.")
+            return
+
+        if acao == "lista":
+            objetos = set(dados["objetos"])
+            texto = "Objetos detectados:\n" + "\n".join(objetos)
+            await query.edit_message_text(texto)
+
+        elif acao == "contagem":
+            contagem = Counter(dados["objetos"])
+            texto = "Quantidade por classe:\n"
+            for obj, qtd in contagem.items():
+                texto += f"{obj}: {qtd}\n"
+            await query.edit_message_text(texto)
+
+        elif acao == "imagem":
+            img_anotada = dados["resultados"][0].plot()
+            caminho_saida = f"annot_{msg_id}.jpg"
+
+            cv2.imwrite(caminho_saida, img_anotada)
+
+            await query.message.reply_photo(
+                photo=open(caminho_saida, "rb"),
+                caption="Imagem com detecções YOLO"
+            )
+
+            os.remove(caminho_saida)
+
