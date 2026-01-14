@@ -255,8 +255,8 @@ class BotAudio(BotTelegram):
             wav_buffer.seek(0)
 
             # Fase 2: Reconhecimento de Fala (Google Speech Recognition)
-            # A transcrição só ocorre se a classe identificada for voz humana ou se houver uma confiança mínima na classificação.
-            if "Speech" in classe or "Conversation" in classe or confianca > 0.4:
+            # A transcrição só ocorre se a classe identificada for voz humana.
+            if "Speech" in classe or "Conversation" in classe:
                 await self.editar(res_final + "\nTranscrevendo fala...")
                 
                 recognizer = sr.Recognizer()
