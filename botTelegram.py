@@ -17,19 +17,41 @@ config = dotenv_values(".env")
 
 class BotTelegram:
     def __init__(self, token, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        self.__token = token
-        self.update = update
-        self.context = context
-        self.message = update.message
+        """
+        Inicializa os componentes básicos do bot.
 
-    #Serve para facilitar o envio de mensagens
+        :param token: Chave de API do bot fornecida pelo BotFather.
+        :param update: Objeto que contém todas as informações da interação atual.
+        :param context: Gerenciador de contexto do framework python-telegram-bot.
+        """
+        self.__token = token            # Atributo privado para segurança do token
+        self.update = update            # Armazena os dados da atualização recebida
+        self.context = context          # Armazena o contexto da execução
+        self.message = update.message   # Atalho para acessar a mensagem do usuário
+
     async def responder(self, texto):
+        """
+        Envia uma nova mensagem de resposta ao usuário e armazena a
+        instância da mensagem enviada para futuras edições.
+
+        :param texto: Conteúdo da mensagem a ser enviada.
+        """
         self.msg = await self.message.reply_text(texto)
-    #Serve para editar a mensagem anteriormente enviada e dar dinâmismo à conversa
+        
     async def editar(self, texto):
+        """
+        Modifica o conteúdo de uma mensagem enviada anteriormente pelo bot.
+        Utilizado para criar uma interface dinâmica e limpa, evitando excesso de mensagens por cada interação.
+
+        :param texto: Novo conteúdo que substituirá o texto anterior.
+        """
         await self.msg.edit_text(texto)
 
     async def processamento(self):
+        """
+        Método abstrato planejado para ser sobrescrito em classes filhas.
+        Garante que o código sempre chame o método processamento, não importa se for para o áudio ou para o texto.
+        """
         pass
 
 class BotImagem(BotTelegram):
@@ -105,17 +127,34 @@ class BotImagem(BotTelegram):
             print(f"Erro no processamento de imagem: {e}")
             await self.responder("Ocorreu um erro ao processar a imagem.")
 
-class ClassificadorSom: #para que o yamnet seja carregado apenas uma vez
+class ClassificadorSom:
+    """
+    Classe responsável por gerenciar o modelo YAMNet para classificação de sons.
+    Realiza o carregamento do modelo YAMNet, lê os dados do modelo e realiza o pré-processamento de sinais e inferência.
+    """
+    
     def __init__(self):
+        """
+        Inicializa a classe, carrega o modelo YAMNet do TensorFlow Hub e
+        mapeia os nomes das classes (labels).
+        """
+        
         print("Carregando YAMNet...")
-        #carrega o modelo
+        # Carrega o modelo pré-treinado do Google via TF Hub
         self.model = hub.load('https://tfhub.dev/google/yamnet/1')
 
-        #carrega os nomes das classes
+        # Extrai o caminho do arquivo de classes (.csv) embutido no modelo
         class_map_path = self.model.class_map_path().numpy().decode('utf-8')
         self.class_names = self._ler_labels(class_map_path)
 
     def _ler_labels(self, path):
+        """
+        Lê o arquivo CSV que mapeia os IDs do modelo para nomes legíveis.
+
+        :param path: Caminho do arquivo CSV de mapeamento.
+        :return: Lista com os nomes das classes ordenadas por índice.
+        """
+        
         classes = []
         with tf.io.gfile.GFile(path) as f:
             reader = csv.DictReader(f)
@@ -124,85 +163,122 @@ class ClassificadorSom: #para que o yamnet seja carregado apenas uma vez
         return classes
 
     def preparar_audio(self, data, sample_rate_original):
-        #coonverter para mono se for estéreo (yamnet treinado apenas para mono)
+        """
+        Normaliza e adapta o áudio de entrada para os requisitos do YAMNet:
+        (Mono, 16kHz, Float32).
+
+        :param data: Array de áudio bruto (NumPy).
+        :param sample_rate_original: Taxa de amostragem original (ex: 44100Hz).
+        :return: Áudio processado pronto para inferência.
+        """
+        
+        # 1. Conversão para Mono: Se o áudio for estéreo (2 canais), calcula a média
         if len(data.shape) > 1:
             data = np.mean(data, axis=1)
             
-        #passar o áudio para 16kHz já que o yamnet só aceita esse formato
+        # 2. Resampling: O YAMNet exige exatamente 16.000 amostras por segundo
         target_sr = 16000
         if sample_rate_original != target_sr:
             number_of_samples = round(len(data) * float(target_sr) / sample_rate_original)
             data = signal.resample(data, number_of_samples)
             
-        #normalizar e converter para float32
+        # 3. Tipagem: Converte para float32 para compatibilidade com o TensorFlow
         return data.astype(np.float32)
 
     def identificar(self, wav_data):
-        #roda o modelo
+        """
+        Executa a inferência no áudio e retorna a classe mais provável.
+
+        :param wav_data: Áudio já processado pelo método preparar_audio.
+        :return: Tupla contendo (Nome da Classe, Porcentagem de Confiança).
+        """
+        # Execução do modelo: retorna scores, embeddings e espectrograma
         scores, embeddings, spectrogram = self.model(wav_data)
         
-        #pega a média dos scores de todos os segmentos do áudio
+        # Agrega os resultados: O modelo analisa pequenos frames. Aqui calculamos a média de probabilidade do áudio inteiro.
         media_scores = tf.reduce_mean(scores, axis=0)
         
-        #pega o índice da maior probabilidade
+        # Identifica o índice do maior valor de probabilidade
         idx_max = tf.argmax(media_scores)
         confidence = media_scores[idx_max].numpy() * 100
         
         return self.class_names[idx_max], confidence
 
 class BotAudio(BotTelegram):
+    """
+    Classe responsável por mediar a interação entre o bot do Telegram e as IA's (Classificação de Som e Transcrição).
+    Herda as funcionalidades básicas de comunicação da classe BotTelegram.
+    """
+    
     def __init__(self, token, update, context, classificador_som):
+        """
+        Inicializa o gerenciador de áudio do bot.
+
+        :param token: Token de autenticação do bot.
+        :param update: Objeto que contém os dados da mensagem recebida.
+        :param context: Contexto da execução do bot.
+        :param classificador_som: Instância carregada da classe ClassificadorSom (YAMNet).
+        """
+        
         super().__init__(token, update, context)
         self.classificador_som = classificador_som
 
     async def processamento(self):
-        #Baixa os arquivos do Telegram para o Buffer (para memória RAM)
+        """
+        Método principal que coordena o fluxo de processamento:
+        1. Download do áudio; 2. Classificação; 3. Transcrição (se necessário).
+        """
+
+        # Buffer em memória para evitar escrita em disco, aumentando a velocidade
         audio_buffer = io.BytesIO()
 
+        # Baixa o arquivo de voz enviado pelo usuário diretamente para a memória RAM
         audio_file = await self.update.message.voice.get_file()
         await audio_file.download_to_memory(audio_buffer)
-        audio_buffer.seek(0)  # Volta o ponteiro para o início do buffer
+        audio_buffer.seek(0)  # Reseta o ponteiro para o início do arquivo
 
         await self.responder("Processando audio...")
-        #faz as operações em memória RAM
+        
         wav_buffer = io.BytesIO()
 
         try:
-            # converte usando soundfile 
+            # Leitura dos dados brutos do buffer usando soundfile
             data, samplerate = sf.read(audio_buffer)
 
-
+            # Fase 1: Classificação de Som (YAMNet)
             audio_preparado = self.classificador_som.preparar_audio(data, samplerate)
-            #classificação do yamnet
             classe, confianca = self.classificador_som.identificar(audio_preparado)
             res_final = f"Som identificado: {classe} ({confianca:.1f}%)\n"
 
-            #escreve no buffer WAV, 'PCM_16' é o formato ideal para escrever em buffer
+            # Conversão para formato WAV (PCM_16) em memória para o Reconhecedor de Fala
             sf.write(wav_buffer, data, samplerate, format='WAV', subtype='PCM_16')
-
-            #prepara o WAV para leitura
             wav_buffer.seek(0)
 
-            #reconhecimento de Fala
+            # Fase 2: Reconhecimento de Fala (Google Speech Recognition)
+            # A transcrição só ocorre se a classe identificada for voz humana ou se houver uma confiança mínima na classificação.
             if "Speech" in classe or "Conversation" in classe or confianca > 0.4:
-                await self.editar(res_final + "Transcrevendo fala...")
+                await self.editar(res_final + "\nTranscrevendo fala...")
+                
                 recognizer = sr.Recognizer()
                 with sr.AudioFile(wav_buffer) as source:
+                    # Captura os dados de áudio do buffer WAV
                     audio_data = recognizer.record(source)
+                    # Envia para a API do Google via SpeechRecognition
                     texto = recognizer.recognize_google(audio_data, language='pt-BR')
-                    res_final += f"Transcrição: {texto}"
+                    res_final += f"\nTranscrição: {texto}"
             else:
-                await self.editar("O som enviado não pode ser transcrevido") 
+                res_final += "\nO som enviado não possui fala clara para transcrição."
 
-            await self.editar(f"Transcrição:\n\n{texto}")
+            # Retorno final para o usuário no Telegram
+            await self.editar(res_final)
 
         except sr.UnknownValueError:
-            await self.editar("Não consegui entender o áudio.")
+            await self.responder("Não consegui entender o áudio.")
         except Exception as e:
-            await self.editar(f"Ocorreu um erro ao tentar processar o áudio.")
+            await self.responder(f"Ocorreu um erro ao tentar processar o áudio.")
             print(f"Erro no processamento: {e}")
         finally:
-            #fecha os buffers
+            # Liberação manual de memória
             audio_buffer.close()
             wav_buffer.close()
 
