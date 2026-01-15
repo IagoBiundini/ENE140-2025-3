@@ -1,11 +1,14 @@
-import deepface
 import os
-import cv2
-import numpy as np
-from ultralytics import YOLO 
-from deepface import DeepFace 
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters)
+
+import cv2
+from ultralytics import YOLO 
+from deepface import DeepFace 
+
+import soundfile as sf
+from vosk import Model, KaldiRecognizer
 
 # --- CLASSE MÃE (BASE) ---
 class BotTelegram:
@@ -156,8 +159,62 @@ class BotImagem(BotTelegram):
             print(f"Erro DeepFace: {e}")
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Não consegui detectar um rosto humano claro nesta imagem.")
 
+class BotAudio(BotTelegram):
+    def __init__(self, token, nomedobot):
+        super().__init__(token, nomedobot)
+        if not os.path.exists("vosk-model-pt"):
+            print("Aviso: Pasta 'vosk-model-pt' não encontrada.")
+            self.__model = None
+        else:
+            self.__model = Model("vosk-model-pt")
+        self.app.add_handler(MessageHandler(filters.VOICE, self.receber_audio))
+
+    async def receber_audio(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        caminho_ogg = f"audio_{user_id}.ogg"
+        caminho_wav = f"audio_{user_id}.wav"
+
+        await update.message.reply_text("Recebi o áudio! Convertendo e transcrevendo...")
+
+        try:
+            voice_file = await update.message.voice.get_file()
+            await voice_file.download_to_drive(caminho_ogg)
+
+            data, samplerate = sf.read(caminho_ogg)
+            sf.write(caminho_wav, data, samplerate)
+
+            texto = self._transcrever_vosk(caminho_wav, samplerate)
+
+            await update.message.reply_text(
+                f"Transcrição: {texto}\n"
+            )
+
+        except Exception as e:
+            await update.message.reply_text(f"Erro ao processar áudio: {e}")
+        
+        finally:
+            for f in [caminho_ogg, caminho_wav]:
+                if os.path.exists(f): os.remove(f)
+
+    def _transcrever_vosk(self, caminho_wav, samplerate):
+        rec = KaldiRecognizer(self.__model, samplerate)
+        
+        with sf.SoundFile(caminho_wav) as f:
+            while True:
+                data = f.buffer_read(4000, dtype='int16')
+                if len(data) == 0:
+                    break
+                rec.AcceptWaveform(bytes(data))
+        
+        resultado = json.loads(rec.FinalResult())
+        return resultado.get("text", "")
+
+class BotMestre(BotImagem, BotAudio):
+    def __init__(self, token, nomedobot):
+        super().__init__(token=token, nomedobot=nomedobot)
+
 # --- EXECUÇÃO ---
 token = os.getenv("BOT_TOKEN")
 if not token: raise RuntimeError("BOT_TOKEN não definido. Defina a variável de ambiente BOT_TOKEN antes de executar o script.")
-bot = BotImagem(token, "@trabalho_telegram_bot")
+bot = BotMestre(token, "@trabalho_telegram_bot")
 bot.iniciar()
