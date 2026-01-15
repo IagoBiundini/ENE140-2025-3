@@ -78,11 +78,11 @@ class BotImagem(BotTelegram):
         await query.edit_message_text(f"Opção: {opcao.upper()}. Processando... (isso pode levar alguns segundos)")
 
         try:
-            if opcao == 'analisar objetos':
+            if opcao == 'analisar':
                 await self.executar_analise_yolo(update, context, caminho)
-            elif opcao == 'inverter imagem':
+            elif opcao == 'inverter':
                 await self.executar_inversao_opencv(update, context, caminho)
-            elif opcao == 'estimar idade':
+            elif opcao == 'idade':
                 await self.executar_estimativa_idade(update, context, caminho) # <--- NOVA CHAMADA
 
         except Exception as e:
