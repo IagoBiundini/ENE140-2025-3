@@ -16,7 +16,7 @@ Para executar o programa, você precisará do Python 3 e das bibliotecas listada
 
     ```bash
     git clone <url-deste-repositorio>
-    cd process_timeseries
+    cd ENE140-2025-3
     ```
 
 2.  **Crie um ambiente virtual (recomendado):**
