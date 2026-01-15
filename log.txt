@@ -1,5 +1,1 @@
-[2026-01-15 16:35:58.077718]Conteúdo não listado recebido.
-[2026-01-15 16:36:10.593645]Mensagem de áudio recebida.
-[2026-01-15 16:36:13.853516]Transcrição realizada com sucesso: Agora sim vai ser o último teste
-[2026-01-15 16:36:19.132151]Comando /test recebido.
-[2026-01-15 16:36:24.565209]Comando /log recebido.
+
