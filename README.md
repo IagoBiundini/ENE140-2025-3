@@ -10,38 +10,30 @@ Este bot analisa imagens (detectando objetos com YOLO) e processa áudios (class
 
 ## Instalação
 
-### 1.  Clone este repositório:
+Para executar o programa, você precisará do Python 3 e das bibliotecas listadas no arquivo `requirements.txt`. O processo recomendado é:
+
+1.  **Clone o repositório:**
 
     ```bash
     git clone <url-deste-repositorio>
-    cd ENE-2025-3
-    
+    cd process_timeseries
+    ```
 
-### 2.  (Recomendado) Crie e ative um ambiente virtual:
+2.  **Crie um ambiente virtual (recomendado):**
 
     ```bash
     python -m venv venv
     source venv/bin/activate  # No Windows: venv\Scripts\activate
-    
+    ```
 
-### 3. Dependências
-Certifique-se de ter o Python instalado. Utilize o arquivo `requirements.txt` na raiz do projeto com o seguinte conteúdo:
-
-```txt
-numpy==1.26.4
-opencv-python==4.9.0.80
-tensorflow
-tensorflow-hub
-ultralytics
-python-telegram-bot
-python-dotenv
-soundfile
-SpeechRecognition
-scipy
-
-
-### 4. Instale as dependências
+3.  **Instale as dependências:**
 
     ```bash
     pip install -r requirements.txt
+    ```
+
+4. **Configuração de token**
+
+    ```bash
+    token=seutoken
     ```
