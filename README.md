@@ -32,7 +32,7 @@ Para executar o programa, você precisará do Python 3 e das bibliotecas listada
     pip install -r requirements.txt
     ```
 
-4. **Configuração de token**
+4. **Configuração de token:**
 
     ```bash
     token=seutoken
