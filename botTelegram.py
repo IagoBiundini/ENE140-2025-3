@@ -95,7 +95,7 @@ class BotImagem(BotTelegram):
         super().__init__(token, update, context)
         self.model = model
 
-    async def processamento_imagem(self):
+    async def processamento(self):
         """
         Processa a imagem enviada pelo usuário no Telegram.
 
