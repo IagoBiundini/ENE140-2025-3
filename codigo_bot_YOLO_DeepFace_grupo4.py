@@ -64,8 +64,8 @@ class BotImagem(BotTelegram):
         context.user_data['caminho_imagem'] = caminho_arquivo
 
         teclado = [
-            [InlineKeyboardButton("🔍 Analisar Objetos (YOLO)", callback_data='analisar')],
-            [InlineKeyboardButton("🎂 Estimar Sexo e Idade (DeepFace)", callback_data='idade')],
+            [InlineKeyboardButton("🔍 Analisar Objetos", callback_data='analisar')],
+            [InlineKeyboardButton("🎂 Estimar Sexo e Idade", callback_data='idade')],
             [InlineKeyboardButton("🔄 Inverter Imagem", callback_data='inverter')]
         ]
         reply_markup = InlineKeyboardMarkup(teclado)
@@ -125,29 +125,30 @@ class BotImagem(BotTelegram):
     async def executar_estimativa_idade(self, update, context, caminho_imagem):
         try:
             print("Rodando DeepFace...")
-            analise = DeepFace.analyze(img_path=caminho_imagem, actions=['age', 'gender'], enforce_detection=False)
-            
-            dados_rosto = analise[0]
-            idade = dados_rosto['age']
-            genero = dados_rosto['dominant_gender']
-
-            if genero == 'Man': genero = 'Homem'
-            elif genero == 'Woman': genero = 'Mulher'
+            analise = DeepFace.analyze(img_path=caminho_imagem, actions=['age', 'gender'], enforce_detection=True)
             
             img = cv2.imread(caminho_imagem)
+            qtd_pessoas = len(analise)
+
+            for rosto in analise:
+                idade = rosto['age']
+                genero = rosto['dominant_gender']
+
+                if genero == 'Man': genero = 'Homem'
+                elif genero == 'Woman': genero = 'Mulher'
             
-            region = dados_rosto['region']
-            x, y, w, h = region['x'], region['y'], region['w'], region['h']
-            
-            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            
-            texto = f"{genero} de {idade} anos"
-            cv2.putText(img, texto, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                region = rosto['region']
+                x, y, w, h = region['x'], region['y'], region['w'], region['h']
+                cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                
+                texto = f"{genero} de {idade} anos"
+                cv2.putText(img, texto, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
             
             caminho_saida = "resultado_idade.jpg"
             cv2.imwrite(caminho_saida, img)
-            
-            msg = f"Detectei um rosto! Estimativa: {texto}"
+
+            pessoa_ou_pessoas = "pessoa" if qtd_pessoas == 1 else "pessoas"
+            msg = f"Detectei {qtd_pessoas} {pessoa_ou_pessoas}!"
             await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
             await context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(caminho_saida, 'rb'))
             
@@ -155,7 +156,7 @@ class BotImagem(BotTelegram):
 
         except Exception as e:
             print(f"Erro DeepFace: {e}")
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Não consegui detectar um rosto humano claro nesta imagem.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Não foi possível detectar rostos. Certifique-se de que a foto está clara.")
 
 class BotAudio(BotTelegram):
     def __init__(self, token, nomedobot):
