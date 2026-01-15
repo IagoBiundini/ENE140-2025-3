@@ -1,4 +1,3 @@
-from TOKEN import str_token
 from bot import *
 
 token = ""
