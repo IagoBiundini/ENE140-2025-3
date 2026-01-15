@@ -1,3 +1,16 @@
+"""
+Dependências e configuração do sistema.
+Este trecho centraliza as bibliotecas utilizadas pelo bot do Telegram,
+abrangendo:
+- Integração com a API do Telegram
+- Processamento de imagens e anotações visuais
+- Execução de inferência com YOLO
+- Manipulação de dados em memória
+- Carregamento de configurações sensíveis via arquivo .env
+
+As dependências relacionadas a áudio estão incluídas para
+extensão multimodal futura do sistema.
+"""
 import tensorflow as tf
 import tensorflow_hub as hub
 from telegram import Update
@@ -55,51 +68,102 @@ class BotTelegram:
         pass
 
 class BotImagem(BotTelegram):
+    """
+    Classe responsável pelo processamento de imagens enviadas ao bot do Telegram.
+
+    Esta classe herda de BotTelegram e adiciona funcionalidades de:
+    - Download de imagens enviadas pelo usuário
+    - Processamento usando um modelo YOLO
+    - Desenho de bounding boxes e labels
+    - Retorno da imagem processada ao usuário
+    """
+
     def __init__(self, token, update, context, model):
+        """
+        Inicializa o bot de processamento de imagens.
+
+        Parâmetros:
+        token : str
+            Token de autenticação do bot do Telegram.
+        update : telegram.Update
+            Objeto de atualização recebido do Telegram.
+        context : telegram.ext.ContextTypes.DEFAULT_TYPE
+            Contexto da aplicação do Telegram.
+        model : object
+            Modelo YOLO previamente carregado para detecção de objetos.
+        """
         super().__init__(token, update, context)
         self.model = model
 
-    async def processamento(self):
+    async def processamento_imagem(self):
+        """
+        Processa a imagem enviada pelo usuário no Telegram.
+
+        Etapas do processamento:
+        Download da imagem em maior resolução
+        Conversão da imagem para formato OpenCV
+        Execução do modelo YOLO
+        Desenho das bounding boxes e labels
+        Envio da imagem processada ao usuário
+        """
         try:
-            # baixa a imagem com maior resolução enviada pelo telegram
+            # Baixa a imagem com maior resolução enviada pelo Telegram
             photo_file = await self.message.photo[-1].get_file()
-            
+
             await self.responder("Processando imagem...")
 
-            # criar um arquivo na RAM. Ao fim do with, o arquivo será fechado
+            # Cria um arquivo temporário em memória (RAM)
+            # Ao final do bloco 'with', o buffer é automaticamente fechado
             with io.BytesIO() as out:
                 await photo_file.download_to_memory(out)
                 out.seek(0)
+
+                # Converte os bytes da imagem para um array NumPy
                 file_bytes = np.frombuffer(out.getvalue(), dtype=np.uint8)
+
+                # Decodifica a imagem usando OpenCV
                 image_file = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
+                # Verifica se a imagem foi carregada corretamente
                 if image_file is None:
                     await self.editar("Erro ao carregar a imagem.")
                     return
 
-                # executa o YOLO
+                # Executa o modelo YOLO na imagem
                 result = self.model(image_file)
 
+                # Verifica se algum objeto foi detectado
                 if len(result[0].boxes) == 0:
                     await self.editar("Nenhum objeto detectado.")
                     return
 
-                # nomes das classes
+                # Dicionário contendo os nomes das classes do modelo
                 name_class = result[0].names
-                final = "Avaliação e classificação da imagem:\n"
 
-                # loop das detecções
+                # Texto final que será enviado ao usuário
+                final = "Avaliação da imagem:\n"
+
+                # Loop sobre todas as detecções
                 for box in result[0].boxes:
+                    # ID da classe detectada
                     class_id = int(box.cls)
+
+                    # Confiança da detecção (em porcentagem)
                     confidence = float(box.conf) * 100
 
-                    # Bounding box
+                    # Coordenadas da bounding box
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Desenha o retângulo
-                    cv2.rectangle(image_file, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    # Desenha o retângulo da bounding box
+                    cv2.rectangle(
+                        image_file,
+                        (x1, y1),
+                        (x2, y2),
+                        (0, 0, 255),
+                        2
+                    )
 
-                    # Desenha o texto
+                    # Desenha o texto com nome da classe e confiança
                     cv2.putText(
                         image_file,
                         f"{name_class[class_id]} {confidence:.1f}%",
@@ -110,11 +174,14 @@ class BotImagem(BotTelegram):
                         2
                     )
 
+                    # Acrescenta o resultado ao texto final
                     final += f"- {name_class[class_id]}: {confidence:.1f}%\n"
-                
+
+                # Atualiza a mensagem com o resumo das detecções
                 await self.editar(final)
                 await self.responder("...")
-                
+
+                # Codifica a imagem processada para envio
                 sucesso, buffer = cv2.imencode('.jpg', image_file)
 
                 if sucesso:
@@ -124,6 +191,7 @@ class BotImagem(BotTelegram):
                     await self.editar("Não foi possível enviar a imagem classificada.")
 
         except Exception as e:
+            # Log de erro para depuração
             print(f"Erro no processamento de imagem: {e}")
             await self.responder("Ocorreu um erro ao processar a imagem.")
 
