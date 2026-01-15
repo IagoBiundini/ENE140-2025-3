@@ -58,7 +58,7 @@ O FFmpeg é obrigatório para converter áudios .ogg para .wav
 É recomendado reiniciar o computador após este processo
 
 ### TOKEN do Telegram
-No arquivo **main.py**, coloque seu TOKEN na sehuinte variável:
+No arquivo **main.py**, coloque seu TOKEN na seguinte variável:
 
 ```python
 token = ""
