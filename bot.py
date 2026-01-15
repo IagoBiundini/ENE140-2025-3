@@ -1,9 +1,11 @@
+import cv2
+from ultralytics import YOLO
+from pathlib import Path
 from telegram import ForceReply, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 import os
 import speech_recognition as sr
 from pydub import AudioSegment
-from TOKEN import str_token
 
 class BotTelegram:
     def __init__(self, token: str):
@@ -53,9 +55,59 @@ Comandos disponíveis:
 class BotImagem(BotTelegram):
     def __init__(self, parentbot: BotTelegram):
         self.parent = parentbot
+        self.model = YOLO("yolov8n.pt")
 
     async def processar_mensagem(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message.photo:
+            return
+        
         await update.message.reply_text("Imagem recebida.")
+
+        src_img = update.message.photo[-1]
+        arquivo = await src_img.get_file()
+
+        path_original = fr"temp/{src_img.file_id}.jpg"
+        path_resultado = fr"temp/{src_img.file_id}_result.jpg"
+        await arquivo.download_to_drive(path_original)
+
+        results = self.model(str(path_original))[0]
+        img = cv2.imread(path_original)
+        detections = []
+
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            label = self.model.names[cls_id]
+            conf = float(box.conf[0])
+
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            detections.append(f"{label} ({conf:.2f})")
+
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(
+                img,
+                f"{label} {conf:.2f}",
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
+        cv2.imwrite(str(path_resultado), img)
+
+        await update.message.reply_photo(
+            photo=open(path_resultado, "rb"),
+            caption="Detecções:")
+        
+        if detections:
+            await update.message.reply_text("\n".join(detections))
+        else:
+            await update.message.reply_text("Nenhum objeto detectado.")
+
+        if os.path.exists(path_original):
+                os.remove(path_original)
+        if os.path.exists(path_resultado):
+                os.remove(path_resultado)
+
 
 class BotAudio(BotTelegram):
     def __init__(self, parent_bot: BotTelegram):
@@ -66,8 +118,8 @@ class BotAudio(BotTelegram):
         #corpo principal para conversao de ogg para WAV("sr" funciona apenas com WAV )
         audio = update.message.voice
         arquivo = await context.bot.get_file(audio.file_id)
-        arqOGG = f"{audio.file_id}.ogg"
-        arqWAV = f"{audio.file_id}.wav"
+        arqOGG = fr"temp/{audio.file_id}.ogg"
+        arqWAV = fr"temp/{audio.file_id}.wav"
         await arquivo.download_to_drive(arqOGG)
         try:
 
