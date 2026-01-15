@@ -10,7 +10,6 @@ from deepface import DeepFace
 import soundfile as sf
 from vosk import Model, KaldiRecognizer
 
-# --- CLASSE MÃE (BASE) ---
 class BotTelegram:
     def __init__(self, token, nomedobot):
         self.__token = token
@@ -20,16 +19,28 @@ class BotTelegram:
         self.app.add_handler(CommandHandler("help", self.help))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(f"Olá! Sou o {self.nomedobot}. Envie uma foto para começar.")
+        await update.message.reply_text(f"Olá! Sou o {self.nomedobot}. 🤖\n\n"
+                                        "Consigo processar imagens e áudios:\n"
+                                        "🖼 Imagens: Detecto objetos, estimo idade/sexo e aplico edições.\n"
+                                        "🎙️ Áudios: Transcrevo mensagens de voz.\n\n"
+                                        "Envie uma imagem ou áudio para começar.")
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("Envie uma imagem e escolha: YOLO (objetos), Inverter (edição) ou Idade (facial).")
+        await update.message.reply_text("❓ Como usar o bot:\n\n"
+                                        "📷 Análise de Imagens:\n"
+                                        "1. Envie uma foto de sua galeria.\n"
+                                        "2. Escolha uma das opções no menu:\n"
+                                        "   • 🔍 Analisar: Identifica objetos e pessoas na cena.\n"
+                                        "   • 🎂 Idade: Analisa rostos para estimar sexo e idade.\n"
+                                        "   • 🔄 Inverter: Faz um espelhamento horizontal da imagem.\n\n"
+                                        "🗣 Transcrição de Áudio:\n"
+                                        "• Basta me enviar uma mensagem de voz e eu responderei com o conteúdo por escrito.\n\n"
+                                        "💡 Dica: Se algo não funcionar, tente enviar a imagem novamente!")
 
     def iniciar(self):
         print(f"Bot {self.nomedobot} iniciado...")
         self.app.run_polling()
 
-# --- CLASSE FILHA (DERIVADA) ---
 class BotImagem(BotTelegram):
     def __init__(self, token, nomedobot, model_path='yolov8n.pt'):
         super().__init__(token, nomedobot)
@@ -41,9 +52,8 @@ class BotImagem(BotTelegram):
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
 
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("Por favor, envie uma IMAGEM primeiro.")
+        await update.message.reply_text("Por favor, envie uma imagem primeiro.")
 
-    # --- PASSO 1: Recebe a imagem e mostra 3 botões ---
     async def receber_imagem(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         caminho_arquivo = f"temp_{user_id}.jpg"
@@ -53,10 +63,9 @@ class BotImagem(BotTelegram):
         
         context.user_data['caminho_imagem'] = caminho_arquivo
 
-        # Configuração dos Botões
         teclado = [
             [InlineKeyboardButton("🔍 Analisar Objetos (YOLO)", callback_data='analisar')],
-            [InlineKeyboardButton("🎂 Estimar Idade (DeepFace)", callback_data='idade')], # <--- NOVO BOTÃO
+            [InlineKeyboardButton("🎂 Estimar Sexo e Idade (DeepFace)", callback_data='idade')],
             [InlineKeyboardButton("🔄 Inverter Imagem", callback_data='inverter')]
         ]
         reply_markup = InlineKeyboardMarkup(teclado)
@@ -66,7 +75,6 @@ class BotImagem(BotTelegram):
             reply_markup=reply_markup
         )
 
-    # --- PASSO 2: Trata o clique ---
     async def botao_pressionado(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
@@ -75,10 +83,10 @@ class BotImagem(BotTelegram):
         caminho = context.user_data.get('caminho_imagem')
 
         if not caminho or not os.path.exists(caminho):
-            await query.edit_message_text("Erro: Imagem expirou. Envie novamente.")
+            await query.edit_message_text("Erro: A imagem expirou. Envie novamente.")
             return
 
-        await query.edit_message_text(f"Opção: {opcao.upper()}. Processando... (isso pode levar alguns segundos)")
+        await query.edit_message_text(f"Opção escolhida: {opcao.capitalize()}.\nProcessando...\n(Isso pode levar alguns segundos)")
 
         try:
             if opcao == 'analisar':
@@ -86,17 +94,14 @@ class BotImagem(BotTelegram):
             elif opcao == 'inverter':
                 await self.executar_inversao_opencv(update, context, caminho)
             elif opcao == 'idade':
-                await self.executar_estimativa_idade(update, context, caminho) # <--- NOVA CHAMADA
+                await self.executar_estimativa_idade(update, context, caminho)
 
         except Exception as e:
             print(f"Erro: {e}")
             await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Erro interno: {e}")
         finally:
-            # Só deleta se já tiver terminado tudo. 
-            # Dica: Em apps reais, deletamos com um timer, mas aqui deletamos direto
             if os.path.exists(caminho): os.remove(caminho)
 
-    # --- LÓGICA 1: YOLO ---
     async def executar_analise_yolo(self, update, context, caminho):
         img = cv2.imread(caminho)
         results = self.model(img)
@@ -108,7 +113,6 @@ class BotImagem(BotTelegram):
         await context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(caminho_saida, 'rb'))
         if os.path.exists(caminho_saida): os.remove(caminho_saida)
 
-    # --- LÓGICA 2: INVERSÃO ---
     async def executar_inversao_opencv(self, update, context, caminho):
         img = cv2.imread(caminho)
         img_inv = cv2.flip(img, 1)
@@ -118,32 +122,26 @@ class BotImagem(BotTelegram):
         await context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(caminho_saida, 'rb'))
         if os.path.exists(caminho_saida): os.remove(caminho_saida)
 
-    # --- LÓGICA 3: DEEPFACE (IDADE) ---
     async def executar_estimativa_idade(self, update, context, caminho_imagem):
         try:
-            # DeepFace faz a mágica. actions=['age'] foca na idade.
-            # enforce_detection=False evita crash se não achar rosto (mas o resultado pode ser ruim)
             print("Rodando DeepFace...")
             analise = DeepFace.analyze(img_path=caminho_imagem, actions=['age', 'gender'], enforce_detection=False)
             
-            # O resultado é uma lista (pode ter vários rostos)
-            # Vamos pegar o primeiro rosto encontrado
             dados_rosto = analise[0]
             idade = dados_rosto['age']
             genero = dados_rosto['dominant_gender']
+
+            if genero == 'Man': genero = 'Homem'
+            elif genero == 'Woman': genero = 'Mulher'
             
-            # Desenhar na imagem usando OpenCV
             img = cv2.imread(caminho_imagem)
             
-            # Pega a região do rosto para desenhar o quadrado
             region = dados_rosto['region']
             x, y, w, h = region['x'], region['y'], region['w'], region['h']
             
-            # Desenha retângulo verde
             cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
             
-            # Escreve a idade
-            texto = f"{genero}, ~{idade} anos"
+            texto = f"{genero} de {idade} anos"
             cv2.putText(img, texto, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
             
             caminho_saida = "resultado_idade.jpg"
@@ -157,7 +155,7 @@ class BotImagem(BotTelegram):
 
         except Exception as e:
             print(f"Erro DeepFace: {e}")
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Não consegui detectar um rosto humano claro nesta imagem.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Não consegui detectar um rosto humano claro nesta imagem.")
 
 class BotAudio(BotTelegram):
     def __init__(self, token, nomedobot):
@@ -174,7 +172,7 @@ class BotAudio(BotTelegram):
         caminho_ogg = f"audio_{user_id}.ogg"
         caminho_wav = f"audio_{user_id}.wav"
 
-        await update.message.reply_text("Recebi o áudio! Convertendo e transcrevendo...")
+        await update.message.reply_text("✅ Recebi o áudio! Convertendo e transcrevendo...")
 
         try:
             voice_file = await update.message.voice.get_file()
@@ -183,10 +181,10 @@ class BotAudio(BotTelegram):
             data, samplerate = sf.read(caminho_ogg)
             sf.write(caminho_wav, data, samplerate)
 
-            texto = self._transcrever_vosk(caminho_wav, samplerate)
+            texto = self.transcrever_vosk(caminho_wav, samplerate)
 
             await update.message.reply_text(
-                f"Transcrição: {texto}\n"
+                f"Transcrição:\n {texto}"
             )
 
         except Exception as e:
@@ -196,7 +194,7 @@ class BotAudio(BotTelegram):
             for f in [caminho_ogg, caminho_wav]:
                 if os.path.exists(f): os.remove(f)
 
-    def _transcrever_vosk(self, caminho_wav, samplerate):
+    def transcrever_vosk(self, caminho_wav, samplerate):
         rec = KaldiRecognizer(self.__model, samplerate)
         
         with sf.SoundFile(caminho_wav) as f:
@@ -213,7 +211,6 @@ class BotMestre(BotImagem, BotAudio):
     def __init__(self, token, nomedobot):
         super().__init__(token=token, nomedobot=nomedobot)
 
-# --- EXECUÇÃO ---
 token = os.getenv("BOT_TOKEN")
 if not token: raise RuntimeError("BOT_TOKEN não definido. Defina a variável de ambiente BOT_TOKEN antes de executar o script.")
 bot = BotMestre(token, "@trabalho_telegram_bot")
