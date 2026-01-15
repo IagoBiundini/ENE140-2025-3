@@ -15,14 +15,14 @@ Este bot analisa imagens (detectando objetos com YOLO) e processa áudios (class
     ```bash
     git clone <url-deste-repositorio>
     cd ENE-2025-3
-    ```
+    
 
 ### 2.  (Recomendado) Crie e ative um ambiente virtual:
 
     ```bash
     python -m venv venv
     source venv/bin/activate  # No Windows: venv\Scripts\activate
-    ```
+    
 
 ### 3. Dependências
 Certifique-se de ter o Python instalado. Utilize o arquivo `requirements.txt` na raiz do projeto com o seguinte conteúdo:
@@ -38,10 +38,10 @@ python-dotenv
 soundfile
 SpeechRecognition
 scipy
-```
+
 
 ### 4. Instale as dependências
 
     ```bash
     pip install -r requirements.txt
-
+    ```
