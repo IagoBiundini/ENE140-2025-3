@@ -1,5 +1,8 @@
 from telegram import ForceReply, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+import os
+import speech_recognition as sr
+from pydub import AudioSegment
 from TOKEN import str_token
 
 class BotTelegram:
@@ -59,4 +62,41 @@ class BotAudio(BotTelegram):
             self.parent = parent_bot
     
     async def processar_mensagem(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("Audio (voz) recebido.")
+        await update.message.reply_text("Audio recebido.")
+        #corpo principal para conversao de ogg para WAV("sr" funciona apenas com WAV )
+        audio = update.message.voice
+        arquivo = await context.bot.get_file(audio.file_id)
+        arqOGG = f"{audio.file_id}.ogg"
+        arqWAV = f"{audio.file_id}.wav"
+        await arquivo.download_to_drive(arqOGG)
+        try:
+
+         conversao = AudioSegment.from_file(arqOGG , format= "ogg")
+         conversao.export(arqWAV , format = "wav")
+        except Exception as e:
+            await update.message.reply_text(f"Erro ao converter áudio: {e}")
+            return
+
+        recognizer = sr.Recognizer()
+        #Corpo principal para transcricao do audio
+        try:
+
+         with sr.AudioFile(arqWAV) as source:
+            audio_data = recognizer.record(source)
+            texto = recognizer.recognize_google(audio_data, language="pt-BR")
+
+         await update.message.reply_text(f"Transcrito: {texto}")
+         
+        except sr.UnknownValueError:
+            await update.message.reply_text("Não consegui entender. Repita, por favor.")
+            return
+
+        except Exception as e:
+            await update.message.reply_text(f"Erro ao transcrever: {e}")
+            return
+        #Apaga os arquivos de audio que usamos pra transcrever o audio DESSE loop
+        finally:
+            if os.path.exists(arqOGG):
+                os.remove(arqOGG)
+            if os.path.exists(arqWAV):
+                os.remove(arqWAV)
