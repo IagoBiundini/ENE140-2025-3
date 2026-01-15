@@ -26,7 +26,7 @@ class BotTelegram:
 Seja bem-vindo ao Telegram Bot do Grupo 5 da turma ENE140!
 Este é um bot capaz de processar imagens e mensagens de voz.
 Ele reconhece automaticamente quando você envia uma imagem e realizar o reconhecimento de objetos nela usando YOLO.
-Além disso, quando você enviar um áudio, ele vai transcrever tudo o que você disse!
+Além disso, quando você enviar um áudio, ele vai transcrever tudo o que você disse!!
 
 Comandos disponíveis:
 /start - Inicia a interação com o bot
