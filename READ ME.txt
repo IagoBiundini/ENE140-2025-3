@@ -1,0 +1,78 @@
+===========================================================
+        SISTEMA DE RECONHECIMENTO INTELIGENTE DE TRANSCRI??O E M?SICA
+===========================================================
+
+Este projeto identifica voz atraves de tres metodos:
+1. Transcricao de Voz (Google)
+2. Identificacao por Melodia (Shazam)
+3. Identificacao por Cantarolar/Humming (ACRCloud)
+
+-----------------------------------------------------------
+1. PRE-REQUISITOS OBRIGATORIOS
+-----------------------------------------------------------
+
+* PYTHON: Versao 3.12.8
+  (Certifique-se de instalar exatamente esta versao para 
+  evitar incompatibilidade com as bibliotecas).
+
+* FFmpeg:
+  O processamento de audio EXIGE o FFmpeg instalado no PATH
+  do seu sistema operacional.
+  - Como testar: Abra o terminal e digite 'ffmpeg -version'.
+  - Se der erro, voce precisa baixar o FFmpeg e adicionar 
+    a pasta /bin nas Variaveis de Ambiente do Windows.
+
+Passo a passo de como instalar: https://www.hostinger.com/br/tutoriais/como-instalar-ffmpeg
+
+-----------------------------------------------------------
+2. CONFIGURACAO DO AMBIENTE (PASSO A PASSO)
+-----------------------------------------------------------
+
+Para quem nao sabe usar ambientes virtuais, siga estes comandos
+no terminal dentro da pasta do projeto:
+
+"Como já foi enviado a pasta com o ambiente virtual criando pule para B"
+
+A) Criar o Ambiente Virtual:
+   python -m venv venv
+
+B) Ativar o Ambiente (IMPORTANTE):
+   No Windows:   .\venv\Scripts\activate
+   No Linux/Mac: source venv/bin/activate
+
+   (Voce vera um "(venv)" aparecer no inicio da linha do terminal).
+
+C) Instalar as dependencias: (Já está instalada no ambiente virtual, não precisa)
+   pip install speechrecognition pydub shazamio yt-dlp requests
+
+-----------------------------------------------------------
+3. CONFIGURACAO DAS APIs
+-----------------------------------------------------------
+
+O projeto utiliza a ACRCloud como ultimo recurso. 
+As chaves de acesso devem ser configuradas na classe 
+'Music_recognition' no arquivo .py:
+
+- ACR_ACCESS_KEY: (Sua chave aqui)
+- ACR_ACCESS_SECRET: (Seu secret aqui)
+
+Cuidado: O plano gratuito da ACRCloud tem limite de consultas!
+
+-----------------------------------------------------------
+4. COMO EXECUTAR
+-----------------------------------------------------------
+
+Utilize o arquivo main.py para sua execu??o.
+
+-----------------------------------------------------------
+5. SOLUCAO DE PROBLEMAS (FAQ)
+-----------------------------------------------------------
+
+- Erro 'FileNotFoundError': O FFmpeg nao esta no PATH.
+- Resposta 'None' da ACRCloud: Pode ser limite de cota atingido.
+- O audio temp nao some: Verifique se a funcao Limpeza_dados()
+  foi chamada corretamente no 'finally' do search_music.
+
+===========================================================
+Desenvolvido para fins academicos - Dezembro/2025
+===========================================================

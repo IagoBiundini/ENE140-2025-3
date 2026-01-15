@@ -200,15 +200,17 @@ class Music_recognition(Speech_audio_recognition):
             
             Método 2) Uso do ShazamIO, caso não identifique usa o método 3
             
-            Método 3) Uso do ACRCloud - pago, caso não identifique a última retorna ou printa **música não identificada** - 
+            Método 3) Uso do ACRCloud - pago, caso não identifique a última retorna ou printa **música não identificada** ou algo similar - 
         """
 
         print("\n---INICIANDO RECONHECIMENTO INTELIGENTE---")
         # Comparação entre speech_recongnition e Shazam()
         self.acesso = False
         texto_transcrito = self.transcrever_audio()
+        lista_pesquisa = None
 
-        if (self.tempo >= 12): #Conferir se a duração do audio é superior a 20 segundos
+        if (self.tempo >= 12): #Confere se a duração do audio é superior a 20 segundos
+
             # (Passo 1) Pesquisa por voz e captura o título
             titulo_voz = None
             resultado_parcial = False
@@ -223,31 +225,40 @@ class Music_recognition(Speech_audio_recognition):
             # (Passo 2) Pesquisa no banco de dados do Shazam - Pela melodia ou sons conhecido
             titulo_shazam = asyncio.run(self._identificar_shazam())
 
-            # Comparação cruzada
+            # Comparação entre shazam e speech
             if (titulo_voz and titulo_shazam): #Compara se os dois são diferentes de None
                 similaridade = difflib.SequenceMatcher(None, titulo_voz.lower(), titulo_shazam.lower()).ratio()  
                 
                 if similaridade > 0.4: # Se houver 40% de semelhança nos nomes - Deve ser mudado caso de erros consecutivos
                     print("Voz e Shazam confirmam a mesma música.")
-                    self.abrir_video(titulo_shazam)                        
+                    #self.abrir_video(titulo_shazam)
+                    resultado = self._buscar_youtuber(titulo_shazam)
+                    return (resultado)                       
                 else:
                     print("Divergência encontrada. O Shazam é mais preciso para melodias.")
-                    self.abrir_video(titulo_shazam)
+                    #self.abrir_video(titulo_shazam)
+                    resultado = self._buscar_youtuber(titulo_shazam)
+                    return (resultado)
             
             elif titulo_shazam:
                 print("Pesquisado apenas pelo shazam")
-                self.abrir_video(titulo_shazam)
+                #self.abrir_video(titulo_shazam)
+                resultado = self._buscar_youtuber(titulo_shazam)
+                return (resultado)
             elif titulo_voz:
                 print("Pesquisado apenas pelo speech_recognition")
-                self.abrir_video(titulo_voz)
+                #self.abrir_video(titulo_voz)
+                resultado = lista_pesquisa
+                return (resultado)
             else:
                 print("\nNão foi possível identificar a música nem por speech e nem por shazam")
-                resultado_parcial = True #Só troca se não achar a pesquisa do speech_recognition e Shazam
-            
-            if resultado_parcial:
                 resultado_final = self.identificar_pela_acrcloud()
                 if resultado_final:
-                    self.abrir_video(resultado_final)
+                    #self.abrir_video(resultado_final)
+                    return self._buscar_youtuber(resultado_final)
+                    
+                    #resultado = self._buscar_youtuber(resultado_final)
+                    #return (resultado)
 
         else:
             print("Tempo insuficiente para análise e pesquisa da música, envie um com um tempo superior a 20 segundos")
@@ -397,15 +408,7 @@ class Music_recognition(Speech_audio_recognition):
         except Exception as e:
             print(f"Erro ao buscar no YouTube: {e}")
             return None
-
-
-    
-    
-    
-    
-    
-    
-    
+ 
     
     
     
