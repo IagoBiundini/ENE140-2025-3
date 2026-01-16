@@ -1,5 +1,7 @@
 import os
 import cv2
+import telebot
+from bot_telegram import BotTelegram
 from collections import Counter
 from ultralytics import YOLO
 
@@ -21,8 +23,8 @@ class BotImagem(BotTelegram):
     Bot especializado em detecção de objetos com YOLO
     """
 
-    def _init_(self, token: str, modelo: str):
-        super()._init_(token)
+    def __init__(self, token: str, modelo: str):
+        super().__init__(token)
         self._modelo = YOLO(modelo)
         self._cache = {}
 
