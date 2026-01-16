@@ -1,5 +1,13 @@
 # main.py
 
+
+#1- Clonar o Repositório
+#2- Instalar python 3.11+
+#3- Criar e Ativar Ambiente Virtual - python -m venv .venv - .venv\Scripts\activate
+#4- Instalar Dependências - pip install -r requirements.txt
+#5- Baixar FFmpeg e adicionar ao PATH do sistema
+#6- Definir token do bot - setx TELEGRAM_BOT_TOKEN "token""
+
 import os
 from telegram.ext import Application
 
