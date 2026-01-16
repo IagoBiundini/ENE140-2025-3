@@ -1,0 +1,5 @@
+python-telegram-bot
+ultralytics
+vosk
+nest_asyncio
+numpy
