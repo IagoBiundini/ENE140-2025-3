@@ -96,8 +96,8 @@ class BotImagem(BotTelegram):
             src_img = update.message.photo[-1]
             arquivo = await src_img.get_file()
 
-            path_original = fr"temp/{src_img.file_id}.jpg"
-            path_resultado = fr"temp/{src_img.file_id}_result.jpg"
+            path_original = f"{src_img.file_id}.jpg"
+            path_resultado = f"{src_img.file_id}_result.jpg"
             await arquivo.download_to_drive(path_original)
 
             results = self.model(str(path_original))[0]
@@ -163,8 +163,8 @@ class BotAudio(BotTelegram):
         #corpo principal para conversao de ogg para WAV("sr" funciona apenas com WAV )
         audio = update.message.voice
         arquivo = await context.bot.get_file(audio.file_id)
-        arqOGG = fr"temp/{audio.file_id}.ogg"
-        arqWAV = fr"temp/{audio.file_id}.wav"
+        arqOGG = f"{audio.file_id}.ogg"
+        arqWAV = f"{audio.file_id}.wav"
         await arquivo.download_to_drive(arqOGG)
 
         try:
