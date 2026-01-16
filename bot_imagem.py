@@ -1,4 +1,4 @@
-from services.yolo_service import YoloService
+from yolo_service import YoloService
 from bot_telegram import BotTelegram
 
 class BotImagem(BotTelegram):

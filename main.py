@@ -1,18 +1,15 @@
 # main.py
 from telegram import Update
-from telegram.ext import (
-    ContextTypes,
-    MessageHandler,
-    CommandHandler,
-    CallbackQueryHandler,
-    filters
-)
+from telegram.ext import (ContextTypes, MessageHandler, CommandHandler, CallbackQueryHandler, filters)
+import os
+from dotenv import load_dotenv
 
 from bot_imagem import BotImagem
 from bot_audio import BotAudio
 from bot_telegram import BotTelegram
 
-TOKEN = "8261660356:AAGCOoJVqvjDh45eRw12J2O1e9zWC_JHcss"
+load_dotenv()
+TOKEN = os.getenv('TOKEN')
 
 bot_base = BotTelegram(TOKEN)
 bot_imagem = BotImagem(TOKEN)
@@ -38,9 +35,7 @@ async def modo_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def modo_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["modo"] = "audio"
-    await update.message.reply_text(
-        "🎤 Modo áudio ativado!\nEnvie um áudio."
-    )
+    await bot_audio.start(update, context)
 
 async def modo_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["modo"] = "texto"
@@ -64,11 +59,11 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ----- MODO ÁUDIO -----
     elif modo == "audio":
-        if update.message.voice:
+        if update.message.voice or update.message.audio:
             await bot_audio.handle_audio(update, context)
         else:
             await update.message.reply_text(
-                "⚠️ Você está no modo áudio. Envie um ÁUDIO."
+                "⚠️ Você está no modo áudio. Utilize os botões interativos para navegar por essa área."
             )
 
     # ----- MODO TEXTO -----
@@ -84,10 +79,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ----- SEM MODO -----
     else:
-        await update.message.reply_text(
-            "❗ Escolha uma opção primeiro:\n"
-            "/imagem, /audio ou /texto"
-        )
+        await start(update, context)
 
 # -------- APP -------- #
 
